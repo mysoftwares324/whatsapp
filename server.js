@@ -3,23 +3,37 @@ const m = require('./sessionManager');
 
 const app = express();
 
+// TEST ROUTE (IMPORTANT)
+app.get('/', (req, res) => {
+    res.send("Server Running ✅");
+});
+
 // AUTO START
 m.create("default");
 
-// SEND API
+// STATUS
+app.get('/status', (req, res) => {
+    res.send(m.getStatus("default"));
+});
+
+// QR
+app.get('/qr', (req, res) => {
+    res.send(m.getQR("default"));
+});
+
+// SEND
 app.get('/send', async (req, res) => {
     try {
-        const n = req.query.number;
-        const msg = req.query.message;
-        const s = req.query.session || "default";
+        const number = req.query.number;
+        const message = req.query.message;
 
-        let c = m.get(s) || m.create(s);
+        let c = m.get("default");
 
-        if (m.getStatus(s) !== "ready") {
+        if (m.getStatus("default") !== "ready") {
             return res.send("Not Ready");
         }
 
-        await c.sendMessage(n + "@c.us", msg);
+        await c.sendMessage(number + "@c.us", message);
 
         res.send("Sent");
 
@@ -28,20 +42,6 @@ app.get('/send', async (req, res) => {
     }
 });
 
-// STATUS
-app.get('/status', (req, res) => {
-    res.send(m.getStatus(req.query.session || "default"));
+app.listen(process.env.PORT || 3000, () => {
+    console.log("Server Started");
 });
-
-// QR
-app.get('/qr', (req, res) => {
-    res.send(m.getQR(req.query.session || "default"));
-});
-
-// CREATE
-app.get('/create', (req, res) => {
-    m.create(req.query.name);
-    res.send("OK");
-});
-
-app.listen(process.env.PORT || 3000);
