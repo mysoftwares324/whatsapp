@@ -1,48 +1,39 @@
 const express = require('express');
 const m = require('./sessionManager');
+
 const app = express();
 app.use(express.json());
 
-// Test route
+// TEST ROUTE
 app.get('/', (req, res) => res.send("Server Running ✅"));
 
-// Start session
-app.get('/start', async (req, res) => {
-    const { userId, sessionName } = req.query;
-    await m.create(userId, sessionName);
-    res.send("Session initializing...");
+// AUTO START DEFAULT SESSION
+m.create("default");
+
+// STATUS
+app.get('/status/:session', (req, res) => {
+    res.send(m.getStatus(req.params.session));
 });
 
-// Get QR
-app.get('/qr', async (req, res) => {
-    const { userId, sessionName } = req.query;
-    const key = `${userId}-${sessionName}`;
-    res.send(m.getQR(key));
+// QR
+app.get('/qr/:session', (req, res) => {
+    res.send(m.getQR(req.params.session));
 });
 
-// Get status
-app.get('/status', async (req, res) => {
-    const { userId, sessionName } = req.query;
-    const key = `${userId}-${sessionName}`;
-    res.send(m.getStatus(key));
-});
-
-// Send message
+// SEND MESSAGE
 app.post('/send', async (req, res) => {
     try {
-        const { userId, sessionName, number, message } = req.body;
-        const key = `${userId}-${sessionName}`;
-        const client = m.get(key);
-
-        if (!client || m.getStatus(key) !== "ready")
-            return res.send("Session not ready");
+        const { number, message, session } = req.body;
+        let client = m.get(session);
+        if (!client || m.getStatus(session) !== "ready") return res.send("Not Ready");
 
         await client.sendMessage(number + "@c.us", message);
-        res.send("Message Sent ✅");
-    } catch (err) {
-        console.error(err);
-        res.send("Error sending message");
+        res.send("Sent ✅");
+    } catch (e) {
+        console.error(e);
+        res.send("Error ❌");
     }
 });
 
-app.listen(process.env.PORT || 3000, () => console.log("Server Started"));
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => console.log(`Server Started on port ${PORT}`));
