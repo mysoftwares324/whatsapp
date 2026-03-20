@@ -1,98 +1,75 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const mysql = require('mysql2/promise');
 
-const dbConfig = {
-    host: 'sql201.infinityfree.com',
-    user: 'if0_40736397',
-    password: 'Mustak7070',
-    database: 'if0_40736397_mysoftware'
-};
-
 class Manager {
     constructor() {
         this.sessions = {};
         this.status = {};
         this.qr = {};
+        this.initDB();
     }
 
-    async create(userId, sessionName) {
-        const key = `${userId}-${sessionName}`;
-        if (this.sessions[key]) return this.sessions[key];
+    async initDB() {
+        this.db = await mysql.createPool({
+            host: process.env.DB_HOST,
+            user: process.env.DB_USER,
+            password: process.env.DB_PASS,
+            database: process.env.DB_NAME,
+        });
+    }
+
+    create(name) {
+        if (this.sessions[name]) return this.sessions[name];
 
         const client = new Client({
             authStrategy: new LocalAuth({
-                clientId: key,
+                clientId: name,
                 dataPath: './sessions'
             }),
             puppeteer: {
                 headless: true,
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-accelerated-2d-canvas',
-                    '--no-first-run',
-                    '--no-zygote',
-                    '--disable-gpu'
-                ]
+                args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage']
             }
         });
 
-        this.status[key] = "starting";
+        this.status[name] = "starting";
 
-        client.on('qr', (q) => {
-            this.qr[key] = q;
-            this.status[key] = "qr";
-            this.saveStatus(userId, sessionName, "qr");
+        client.on('qr', async (q) => {
+            this.qr[name] = q;
+            this.status[name] = "qr";
+            await this.saveSessionToDB(name, null, "qr");
         });
 
         client.on('ready', async () => {
-            this.status[key] = "ready";
-            this.qr[key] = null;
-            const session = await client.authStrategy.exportSession();
-            await this.saveSession(userId, sessionName, session, "ready");
+            this.status[name] = "ready";
+            this.qr[name] = null;
+            await this.saveSessionToDB(name, "ready", "ready");
         });
 
         client.on('disconnected', () => {
-            this.status[key] = "reconnecting";
-            this.saveStatus(userId, sessionName, "reconnecting");
+            this.status[name] = "reconnecting";
             setTimeout(() => client.initialize(), 5000);
         });
 
-        await client.initialize();
-        this.sessions[key] = client;
+        client.initialize();
+        this.sessions[name] = client;
         return client;
     }
 
-    get(key) { return this.sessions[key]; }
-    getQR(key) { return this.qr[key] || "NO_QR"; }
-    getStatus(key) { return this.status[key] || "not_found"; }
-
-    async saveSession(userId, sessionName, session, status) {
+    async saveSessionToDB(session_name, mobile=null, status="starting") {
         try {
-            const conn = await mysql.createConnection(dbConfig);
-            await conn.execute(
-                'REPLACE INTO whatsapp_sessions (mobile, session_name, session_data, status) VALUES (?, ?, ?, ?)',
-                [userId, sessionName, JSON.stringify(session), status]
+            await this.db.query(
+                `INSERT INTO whatsapp_sessions (mobile, session_name, session_data, status)
+                VALUES (?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE status=?`,
+                [mobile||"", session_name, JSON.stringify({}), status, status]
             );
-            await conn.end();
-        } catch (err) {
-            console.error("MySQL save error:", err);
-        }
+        } catch(e) { console.error(e); }
     }
 
-    async saveStatus(userId, sessionName, status) {
-        try {
-            const conn = await mysql.createConnection(dbConfig);
-            await conn.execute(
-                'UPDATE whatsapp_sessions SET status=? WHERE mobile=? AND session_name=?',
-                [status, userId, sessionName]
-            );
-            await conn.end();
-        } catch (err) {
-            console.error("MySQL status error:", err);
-        }
-    }
+    get(name){ return this.sessions[name]; }
+    getQR(name){ return this.qr[name] || "NO_QR"; }
+    getStatus(name){ return this.status[name] || "not_found"; }
 }
 
 module.exports = new Manager();
