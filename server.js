@@ -1,47 +1,48 @@
 const express = require('express');
 const m = require('./sessionManager');
-
 const app = express();
+app.use(express.json());
 
-// TEST ROUTE (IMPORTANT)
-app.get('/', (req, res) => {
-    res.send("Server Running ✅");
+// Test route
+app.get('/', (req, res) => res.send("Server Running ✅"));
+
+// Start session
+app.get('/start', async (req, res) => {
+    const { userId, sessionName } = req.query;
+    await m.create(userId, sessionName);
+    res.send("Session initializing...");
 });
 
-// AUTO START
-m.create("default");
-
-// STATUS
-app.get('/status', (req, res) => {
-    res.send(m.getStatus("default"));
+// Get QR
+app.get('/qr', async (req, res) => {
+    const { userId, sessionName } = req.query;
+    const key = `${userId}-${sessionName}`;
+    res.send(m.getQR(key));
 });
 
-// QR
-app.get('/qr', (req, res) => {
-    res.send(m.getQR("default"));
+// Get status
+app.get('/status', async (req, res) => {
+    const { userId, sessionName } = req.query;
+    const key = `${userId}-${sessionName}`;
+    res.send(m.getStatus(key));
 });
 
-// SEND
-app.get('/send', async (req, res) => {
+// Send message
+app.post('/send', async (req, res) => {
     try {
-        const number = req.query.number;
-        const message = req.query.message;
+        const { userId, sessionName, number, message } = req.body;
+        const key = `${userId}-${sessionName}`;
+        const client = m.get(key);
 
-        let c = m.get("default");
+        if (!client || m.getStatus(key) !== "ready")
+            return res.send("Session not ready");
 
-        if (m.getStatus("default") !== "ready") {
-            return res.send("Not Ready");
-        }
-
-        await c.sendMessage(number + "@c.us", message);
-
-        res.send("Sent");
-
-    } catch (e) {
-        res.send("Error");
+        await client.sendMessage(number + "@c.us", message);
+        res.send("Message Sent ✅");
+    } catch (err) {
+        console.error(err);
+        res.send("Error sending message");
     }
 });
 
-app.listen(process.env.PORT || 3000, () => {
-    console.log("Server Started");
-});
+app.listen(process.env.PORT || 3000, () => console.log("Server Started"));
